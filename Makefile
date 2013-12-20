@@ -3,6 +3,9 @@ PREFIX:=../
 DEST:=$(PREFIX)$(PROJECT)
 
 REBAR=./rebar
+TMP_DIR=./rtsp_server0.tmp
+APP_NAME=rtsp_server
+PROJECT_NAME=rtsp_server
 
 rebuild:	del_deps \
 	get_deps \
@@ -40,34 +43,24 @@ test-compile:
 
 test_suite:clean \
 		compile
-		@$(REBAR) ct suite=packet_codec
+		@$(REBAR) ct suite=rtp_session_ex
 
 rel: deps
 	@$(REBAR) compile generate
 	
 release:
-	rm -f RTSP-Server.zip
-	rm -rf ./RTSP-Server
-	rm -rf ./RTSP-server
-	mkdir ./RTSP-Server
-	cp -r ./src/ ./RTSP-Server/ 
-	cp -r ./deps/ ./RTSP-Server/ 
-	cp -r ./include/ ./RTSP-Server/ 
-	cp ./rebar ./RTSP-Server/rebar
-	cp ./rebar.config ./RTSP-Server/rebar.config
-	cd ./RTSP-Server;./rebar clean;./rebar compile;mv ./deps/* ./;mkdir ./rtsp_server;mv ./ebin ./rtsp_server;mkdir ./rel;cd ./rel;../rebar create-node nodeid=RTSP-server;cp ../../reltool.config ./
-	cd ./RTSP-Server;./rebar generate
-	rm -rf ./RTSP-Server/src
-	rm -rf ./RTSP-Server/deps
-	rm -rf ./RTSP-Server/include
-	cp -r ./RTSP-Server/rel/RTSP-server ./
-	cp ./app.config ./RTSP-server/etc
-	mkdir RTSP-server/git
-	cp ../.git/HEAD RTSP-server/git/
-	cp -r ../.git/refs RTSP-server/git/
-	./rename
-	rm -rf ./RTSP-Server
-	rm -rf ./RTSP-server
+	rm -f $(PROJECT_NAME)*.zip
+	rm -rf $(TMP_DIR)
+	mkdir $(TMP_DIR)
+	cp -r ./src $(TMP_DIR)/
+	cp -r ./include $(TMP_DIR)/ 
+	cp ./rebar $(TMP_DIR)/rebar
+	cp ./rebar.config $(TMP_DIR)/rebar.config
+	cd $(TMP_DIR);./rebar clean;./rebar compile;mkdir ./$(APP_NAME);mv ./ebin ./$(APP_NAME);mv ./include ./$(APP_NAME);mkdir ./rel;cd ./rel;../rebar create-node nodeid=$(PROJECT_NAME);cp ../../reltool.config ./
+	cd $(TMP_DIR);./rebar -v generate
+	cp ./app.config $(TMP_DIR)/rel/$(PROJECT_NAME)/etc
+	cd $(TMP_DIR)/rel;zip -r $(PROJECT_NAME)_`date +%m%d`$(BUILD_NUMBER)  ./$(PROJECT_NAME);cp $(PROJECT_NAME)*.zip ../../
+	rm -rf $(TMP_DIR)
 
 
 	
