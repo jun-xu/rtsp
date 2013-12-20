@@ -1,0 +1,18 @@
+{application, rtsp_server,
+ [
+  {description, ""},
+  {vsn, "1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {mod, {rtsp_server_app, []}},
+  {env, [
+  		 {roots,"/home/sunshine/git/rtsp/test"},
+  		 {rtsp_ip, "192.168.208.74"},
+  		 {rtsp_port, 8554},
+         {sys_bandwidth, 100},
+         {file_path, ["/home/sunshine/git/rtsp/test"]}
+        ]}
+ ]}.

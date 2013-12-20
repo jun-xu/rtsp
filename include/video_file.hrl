@@ -1,0 +1,13 @@
+
+-define(START_TIME_ZERO, 0).
+
+-define(FILE_READ_OPEN_OPTIONS,[read,raw,binary,read_ahead]).
+
+-define(DEFAULT_MIN_READ_FRAMES_Length,100).
+
+-define(DEFAULT_READ_FILE_BUFF_SIZE,1024*1024).
+
+-define(VIDEO_PRE_FIX,"/files").
+
+-define(DEFAULT_H264_TIMECLOCK,90000).
+-define(TIMECLOCK_MAPPING,[{h264,?DEFAULT_H264_TIMECLOCK}]).
