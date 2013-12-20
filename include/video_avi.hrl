@@ -15,6 +15,7 @@
 
 -define(AVI_INDEX_LIST,"idx1").
 
+-define(AVI_LIST_JUNK,"JUNK").
 
 -define(AVI_FCC_TYPE_VIDS,"vids").
 -define(AVI_FCC_TYPE_AUDS,"auds").
@@ -25,8 +26,10 @@
 
 -define(AVI_INDEX_FRAME_TYPE_AUDIO,"wb").
 -define(AVI_INDEX_FRAME_TYPE_PC,"pc").
+-define(AVI_INDEX_FRAME_TYPE_VIDEO_DB,"db").
+-define(AVI_INDEX_FRAME_TYPE_VIDEO_DC,"dc").
 
--define(AVI_VIDEO_BINARY_FLAGS,[<<"dc">>,<<"db">>]).
+-define(AVI_VIDEO_BINARY_FLAGS,[<<?AVI_INDEX_FRAME_TYPE_VIDEO_DC>>,<<?AVI_INDEX_FRAME_TYPE_VIDEO_DB>>]).
 -record(track_info,{id = 0,
 				type = "<<dc>>",
 				iindexs = []}).
@@ -38,9 +41,12 @@
 
 -record(avi_read_header,{fps = 40,
 						 vids_fcc_handler = "H264",
-						 vids_account = 0
+						 vids_account = 0,
+						 read_flags = [] :: [binary()]				%% maybe. [<<"00dc">>,<<"00db">>,<<"01wb">>...]
 						 }).
 
+-define(AVI_INDEX_OFFSET_TYPE_ABSOLUTE,absolute).
+-define(AVI_INDEX_OFFSET_TYPE_RELATIVE,opposite).
 
 
 -record(state, {file_path,
@@ -52,5 +58,6 @@
 				data_start_offset = 0,
 				cur_offset = 0,
 				i_video_indexs = [],
-				avi_read_header = undefined :: undefined | #avi_read_header{}
+				avi_read_header = undefined :: undefined | #avi_read_header{},
+				avi_index_offset_type = ?AVI_INDEX_OFFSET_TYPE_ABSOLUTE
 			   }).

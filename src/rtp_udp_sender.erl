@@ -132,7 +132,7 @@ handle_cast(send_bye,#rtp_udp_sender{setup=true,rtcp_pid=RtcpPid} = State) ->
 	{noreply, State};
 
 handle_cast(stop, State) ->
-	{stop, ok, State};
+	{stop, normal, State};
 
 handle_cast(_Msg, State) ->
     {noreply, State}.

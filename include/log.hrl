@@ -9,3 +9,6 @@
 -define(DEBUG(Format,Msg),error_logger:info_msg(Format,Msg)).
 %% -define(DEBUG(Msg),ok).
 %% -define(DEBUG_F(Format,Msg),ok).
+
+-define(TRACK(Msg),error_logger:info_msg(Msg)).
+-define(TRACK(Format,Msg),error_logger:info_msg(Format,Msg)).
