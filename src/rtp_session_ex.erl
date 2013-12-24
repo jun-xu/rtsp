@@ -19,12 +19,12 @@
 %% --------------------------------------------------------------------
 %% External exports
 %% --------------------------------------------------------------------
--export([start_link/0,setup/2,play/2,pause/2]).
+-export([start_link/0,setup/2,play/2,pause/2,get_sdp/2]).
 
 %% --------------------------------------------------------------------
 %% gen_server callbacks
 %% --------------------------------------------------------------------
--export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3,get_sdp/2]).
+-export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -define(BEFORE_SEND_FIRST_FRAME_TIME,40).
 -define(DEFAULT_MIN_SEND_INTERVAL,0).
@@ -34,7 +34,6 @@
 -define(DEFAULT_RETRY_TIME,1000).
 
 
--define(RTP_AVP,"RTP/AVP").
 
 %% ====================================================================
 %% External functions
@@ -86,7 +85,8 @@ init([]) ->
 %% 		Handling call messages
 %% @end
 %%--------------------------------------------------------------------
-handle_call({get_sdp,URL},_,State) ->
+
+handle_call({get_sdp,URL},_,#rtp_session_state_ex{sdp=undefined} = State) ->
 	?INFO("~p -- get sdp of url:~p",[?MODULE,URL]),
 	case decode_file_path(URL) of
 		{ok,FilePath} ->
@@ -102,10 +102,10 @@ handle_call({get_sdp,URL},_,State) ->
 								ok	->
 									case ReadMod:get_sdp(ReaderPid) of
 										{ok,#media_info{options=Options} =MediaInfo} ->
-											{ok,SessionId,NewMediaInfo} = gen_sdp_session(MediaInfo#media_info{options=[{url,URL}|Options]}),
+											{ok,SessionId,NewMediaInfo} = rtsp_util:gen_sdp_session(MediaInfo#media_info{options=[{url,URL}|Options]}),
 											Sdp = sdp:encode(NewMediaInfo),
 											?INFO("~p -- init sdp:~p~nsession:~p",[?MODULE,Sdp,SessionId]),
-											{reply, {ok,Sdp,SessionId}, State#rtp_session_state_ex{session_id=SessionId,media_info=NewMediaInfo,source_mod=ReadMod,source_pid=ReaderPid}};
+											{reply, {ok,Sdp,SessionId}, State#rtp_session_state_ex{sdp=Sdp,session_id=SessionId,media_info=NewMediaInfo,source_mod=ReadMod,source_pid=ReaderPid}};
 										E ->
 											?INFO("~p -- get sdp ~p error:~p",[?MODULE,RelFilePath,E]),
 											{stop, close, {error, cannot_find}, State}
@@ -122,6 +122,8 @@ handle_call({get_sdp,URL},_,State) ->
 			?INFO("~p -- bad request:~p by reason:~p",[?MODULE,URL,Reason]),
 			{stop, close, {error, bad_request}, State}
 	end;
+handle_call({get_sdp,_URL},_,#rtp_session_state_ex{sdp=Sdp,session_id=SessionId} = State) ->
+	{reply, {ok,Sdp,SessionId}, State};
 %% 	{reply, ok, State};
 handle_call(#setup{url=Url} = Setup, _From, #rtp_session_state_ex{channels=Channels} = State) ->
 	?INFO("~p -- udp setup:~p~n",[?MODULE,Setup]),
@@ -348,13 +350,13 @@ handle_info(play_next,#rtp_session_state_ex{current_play=undefined,channels=Chan
 %% start a new play.
 handle_info(play_next,#rtp_session_state_ex{current_play=undefined,source_mod=ReaderMod,rtp_state=?RTP_SESSION_STATE_PAUSING,send_timer=Timer,source_pid=Pid,
 											read_id=ReadId,plays=[#play{scale=Scale,range=Range} = Play|Rest]} = State) ->
-	{StartTime, EndTime} = case Range of
+	{StartTime, _EndTime} = case Range of
 								undefined -> {0,undefined};
 							    {undefined,undefined} -> {0,undefined};
 							    {S,E} -> {S,E}
 						   end,
 	cancel_timer(Timer),
-	ok = ReaderMod:setup(Pid, StartTime, 0),
+	ok = ReaderMod:position(Pid, StartTime, 0),
 	NewReadId = ReadId + 1,
 	ok = ReaderMod:read(Pid, self(), NewReadId),
 	NewScale = case Scale of
@@ -411,17 +413,6 @@ code_change(_OldVsn, State, _Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
-gen_sdp_session(#media_info{options=Options} = MediaInfo) ->
-	SessionId = sdp:make_session(),
-	Addr = case rtsp_util:get_app_env(rtsp_ip, [], undefined) of
-			   undefined -> rtsp_util:get_self_ipv4();
-			   Ip -> Ip
-		 	end,
-	Version = integer_to_list(rtsp_util:now_in_millisecond()),
-	Originator = #sdp_o{address=Addr,sessionid=SessionId,version=Version},
-	SdpSession = #sdp_session{originator=Originator,connect={inet4,Addr}},
-	{ok,SessionId,MediaInfo#media_info{options=[{sdp_session,SdpSession}|Options]}}.
-
 cancel_timer(undefined) -> ok;
 cancel_timer(Timer) ->
 	timer:cancel(Timer).

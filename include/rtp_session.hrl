@@ -10,6 +10,7 @@
 -record(frame, {timestamp = 0 :: integer(),
 				track = 1 :: integer(),
 				type = h264 :: atom(),
+				timescale = 90000,		%% h264: 90000HZ
 				data :: binary()
 			   }).
 
@@ -24,7 +25,8 @@
 				socket :: port(),
 				check_rr = false :: boolean(),
 				transport = udp,
-				interleaved = undefined	%% for tcp only   
+				interleaved = undefined,	%% for tcp only,
+			    client_pid = undefined  %% for stream client only   
 			   }).
 
 -record(play, {scale = ?DEFAULT_SCAL :: float(),
@@ -43,13 +45,13 @@
 							file_begin_time = {{2012,12,12}, {12,12,12}},
 							source_mod :: atom(),
 							source_pid :: pid(),
-							sender_pid :: pid(),
+%% 							sender_pid :: pid(),
 							is_reading =false :: boolean(),
 							rtp_state = ?RTP_SESSION_STATE_PAUSING,	
 							read_id = 0 :: integer(),
 							send_timer = undefined :: reference(),
-							tracks = []	::	[{Track::integer(),Type::string()}],
-							channels= [] :: [{Track::1|2,{TransportMod::atom()  %% tcp: rtsp_socket  udp: rtp_udp_sender
+%% 							tracks = []	::	[{Track::integer(),Type::string()}],
+							channels= [] :: [{Track::integer(),{TransportMod::atom()  %% tcp: rtsp_socket  udp: rtp_udp_sender
 														 ,Sender::pid()}}],     %% track 1:video    2: audio
 							plays = [] :: [#play{}],
 							current_play = undefined :: #play{},
@@ -62,4 +64,13 @@
 							sdp = undefined,
 							media_info = undefined
 						   }).
+
+-record(rtp_session_streams,{session_id,
+							 source_pid :: pid(),
+							 source_ref,
+							 rtp_state = ?RTP_SESSION_STATE_PAUSING,
+							 channels= [] :: [{Track::integer(),{TransportMod::atom(),Sender::pid()}}],
+							 sdp = undefined,
+							 media_info = undefined     
+							 }).
 

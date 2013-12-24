@@ -51,20 +51,20 @@ test_get_file_medio_info(_) ->
 
 
 test_common(_) ->
-	FilePath = "../../test/9min.avi",
+	FilePath = "../../test/video.avi",
 	{ok,Pid} = file_avi_reader:start_link(),
 	ok = file_avi_reader:init_file(Pid, FilePath),
-	{ok,MediaInfo} = file_avi_reader:get_sdp(Pid),
-	?INFO("mediainfo:~p",[MediaInfo]),
+	{ok,#media_info{video=Videos} = MediaInfo} = file_avi_reader:get_sdp(Pid),
+	?INFO("sdp:~p",[MediaInfo]),
+	ok = loop_fmtp(Videos),
 	ReadId = 1,
-	ok = file_avi_reader:setup(Pid, 0, 0),
+	ok = file_avi_reader:position(Pid, 0, 0),
 	file_avi_reader:read(Pid, self(), ReadId),
 	timer:sleep(2000),
 	
-%% 	{error,not_found} = file_avi_reader:setup(Pid, 10, 100),
-%% 	ok = file_avi_reader:setup(Pid, 4000, 0),
+%% 	{error,not_found} = file_avi_reader:position(Pid, 10, 100),
+%% 	ok = file_avi_reader:position(Pid, 4000, 0),
 	ok = file_avi_reader:stop(Pid),
-%% 	1=2,
 	ok.
 
 receive_msg() ->
@@ -79,4 +79,8 @@ receive_msg() ->
 			exit(failed)
 	end.
 	
-	
+loop_fmtp([]) -> ok;
+loop_fmtp([V|T]) ->
+	Sdp = sdp:encode(V),
+	?TRACK("video:~p~nsdp:~p~n",[V,Sdp]),
+	loop_fmtp(T).

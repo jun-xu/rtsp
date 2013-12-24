@@ -28,13 +28,13 @@
 -record(stream_info, {
   content        = undefined ::frame_content(),
   stream_id      = 0         ::non_neg_integer(),
-  codec 	     = undefined ::frame_codec()|undefined,
+  codec 	     = h264 ::frame_codec()|undefined,
   mic_sec_per_frame = 40,
 %%   config         = undefined ::stream_decoder_config(),
   bitrate        = undefined ::non_neg_integer(),
-  language       = undefined ::string()|undefined,
+  language       = 1 ::string()|undefined,
   params         = undefined ::audio_params()|video_params(),
-  timescale      = 1         ::non_neg_integer(), % uses milliseconds
+  timescale      = 90000::non_neg_integer(), % h.264 90KHZ
   options        = []        ::any()
 }).
 

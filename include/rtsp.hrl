@@ -1,5 +1,7 @@
 
 -define(APP_NAME,rtsp_server).
+
+-define(RTP_AVP,"RTP/AVP").
 -define(DEFAULT_LISTEN_PORT,56000).
 
 -define(SND_BUF_SIZE, (512 * 1024)).
@@ -34,6 +36,7 @@
 								    {7,22050},{8,16000},{9,12000},{10,11025},{11,8000},{12,7350}]).
 -record(rtp_state, {seq=0 :: integer(),
 					ssrc=0 :: integer(),
+					dtc,
 					samplingfrequency = ?DEFAULT_SAMPLING_FREQUENCY :: integer()}).
 -record(rtp_udp_sender,{client_rtp_port :: integer(),
 					server_rtp_port :: integer(),
@@ -44,6 +47,9 @@
 					destination,
 					rtp_state = #rtp_state{},
 					setup=false
+  		}).
+
+-record(rtp_stream_udp_sender,{senders = [] :: [{Pid::pid(),#rtp_udp_sender{}}]
   		}).
 
 
@@ -60,9 +66,12 @@
 
 -define(RTP_OVER_TCP_MAGIC,16#24).
 
+-define(RTSP_SERVER_FILES_MOD,rtp_session_ex).
+-define(RTSP_SERVER_STREAMS_MOD,rtp_session_stream).
+-define(DEFAULT_RTSP_SERVER_MOD,?RTSP_SERVER_FILES_MOD).
 
--define(DEFAULT_RTSP_SERVER_MOD,rtp_session_ex).
--define(RTSP_SERVER_ROUTE_MOD_MAPPING,[{files,?DEFAULT_RTSP_SERVER_MOD},{"files",?DEFAULT_RTSP_SERVER_MOD}]).
+-define(RTSP_SERVER_ROUTE_MOD_MAPPING,[{files,?DEFAULT_RTSP_SERVER_MOD},{"files",?DEFAULT_RTSP_SERVER_MOD},
+									   {streams,?RTSP_SERVER_STREAMS_MOD},{"streams",?RTSP_SERVER_STREAMS_MOD}]).
 
 -define(DEFAULT_READ_MOD,file_avi_reader).
 -define(RTSP_FILE_MOD_MAPPING,[{".avi",?DEFAULT_READ_MOD}]).

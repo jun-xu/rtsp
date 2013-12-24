@@ -7,14 +7,28 @@
 %% Include files
 %%
 -include("rtsp.hrl").
+-include("media_info.hrl").
+-include("sdp.hrl").
 %%
 %% Exported Functions
 %%
--export([get_self_ipv4/0,now_in_millisecond/0,get_track/1,get_app_env/3,open_groupsocket/1,choose_file_reader/1]).
+-export([get_self_ipv4/0,now_in_millisecond/0,get_track/1,get_app_env/3,open_groupsocket/1,
+		 choose_file_reader/1,gen_sdp_session/1,dtc/0]).
 
 %%
 %% API Functions
 %%
+gen_sdp_session(#media_info{options=Options} = MediaInfo) ->
+	SessionId = sdp:make_session(),
+	Addr = case rtsp_util:get_app_env(rtsp_ip, [], undefined) of
+			   undefined -> rtsp_util:get_self_ipv4();
+			   Ip -> Ip
+		 	end,
+	Version = integer_to_list(rtsp_util:now_in_millisecond()),
+	Originator = #sdp_o{address=Addr,sessionid=SessionId,version=Version},
+	SdpSession = #sdp_session{originator=Originator,connect={inet4,Addr}},
+	{ok,SessionId,MediaInfo#media_info{options=[{sdp_session,SdpSession}|Options]}}.
+
 get_self_ipv4() ->
 	{ok,[{Addr,_,_}|_T]} = inet:getif(),
 	inet_parse:ntoa(Addr).
@@ -27,6 +41,11 @@ choose_file_reader(FilePath) ->
 now_in_millisecond() ->
 	{A,S,M} = now(),
 	A * 1000000000 + S * 1000 + M div 1000.
+
+dtc() ->
+	now_in_millisecond() band 16#ffff.
+	
+	
 
 %% track 1: video
 %% track 2: audio

@@ -26,3 +26,12 @@
 
 -define(DEFAULT_PAYLOAD_TYPE,96).
 
+-record(h264, {
+  profile,
+  profile_compat = 0,
+  level,
+  length_size = 32,
+  sps,
+  pps,
+  buffer = undefined
+}).

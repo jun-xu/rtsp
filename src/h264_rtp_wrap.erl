@@ -20,13 +20,12 @@
 %%
 %% API Functions
 %%
--spec wrap(Frame::#frame{}, RtpState::#rtp_state{}) -> 
-		  {ok, Rtps::list(), NewRtpState::#rtp_state{}}.
+-spec wrap(Frame::#frame{}, RtpState::#rtp_state{}) -> {ok, Rtps::list(), NewRtpState::#rtp_state{}}.
 wrap(#frame{timestamp=Timestamp, data=Data}, RtpState) ->
 %% 	?DEBUG("~p --  send frame:~p",[?MODULE,{Track,Type,Timestamp}]),
 	[<<>> | Nals] = binary:split(Data, <<1:32>>, [global]),
 	RtpTimestamp = Timestamp * 90000 div 1000,
-	wrap(RtpTimestamp, Nals, RtpState, []).
+	wrap(RtpTimestamp, Nals, RtpState#rtp_state{ssrc=make_ssrc(),dtc=rtsp_util:dtc()}, []).
 
 %%
 %% Local Functions
@@ -40,8 +39,6 @@ wrap(Timestamp, [Nal | T], RtpState, Ret) ->
 
 -spec wrap(Timestamp::integer(), Nal::binary(), OtherNals::list(binary()), RtpState::#rtp_state{}, Ret::list(binary())) -> 
 		  {ok, Rtps::list(), NewRtpState::#rtp_state{}}.
-
-
 wrap(Timestamp, Nal, OtherNals, RtpState, Ret) when size(Nal) =< 1436 ->
 	Marker = case OtherNals of
 			[] -> 1;
@@ -58,16 +55,10 @@ wrap(Timestamp, <<0:1, NRI:2, Type:5, Data:1434/binary, Rest/binary>>, OtherNals
 	FU = <<0:1, NRI:2, ?NAL_FUA:5, S:1, E:1, 0:1, Type:5, Data/binary>>,
 	Rtp = <<?RTP_VERSION:2, ?RTP_NO_PADDING:1, ?RTP_NO_EXTANSION:1, ?RTP_NO_CSRC:4, 0:1, ?DEFAULT_PAYLOAD_TYPE:7, 
 			Seq:16,Timestamp:32,SSRC:32,FU/binary>>,
-	wrap(Timestamp, NRI, Type, Rest, OtherNals, RtpState#rtp_state{seq = (Seq+1) rem 16#10000}, [Rtp | Ret]).
+	wrap(Timestamp, NRI, Type, Rest, OtherNals, RtpState#rtp_state{seq = inc_seq(Seq)}, [Rtp | Ret]).
 
--spec wrap(Timestamp::integer(), 
-		   NRI::integer(), 
-		   Type::integer(), 
-		   Rest::binary(), 
-		   OtherNals::list(binary()), 
-		   RtpState::#rtp_state{}, 
-		   Ret::list(binary())) -> 
-		  {ok, Rtps::list(), NewRtpState::#rtp_state{}}.
+-spec wrap(Timestamp::integer(),NRI::integer(),Type::integer(),Rest::binary(),OtherNals::list(binary()),
+		   RtpState::#rtp_state{},Ret::list(binary())) -> {ok, Rtps::list(), NewRtpState::#rtp_state{}}.
 wrap(Timestamp, NRI, Type, Data, OtherNals, RtpState, Ret) when size(Data) =< 1434 ->
 	S = 0,
 	E = 1,
@@ -79,7 +70,7 @@ wrap(Timestamp, NRI, Type, Data, OtherNals, RtpState, Ret) when size(Data) =< 14
 	FU = <<0:1, NRI:2, ?NAL_FUA:5, S:1, E:1, 0:1, Type:5, Data/binary>>,
 	Rtp = <<?RTP_VERSION:2, ?RTP_NO_PADDING:1, ?RTP_NO_EXTANSION:1, ?RTP_NO_CSRC:4, Marker:1, ?DEFAULT_PAYLOAD_TYPE:7, 
 			Seq:16,Timestamp:32,SSRC:32,FU/binary>>,
-	wrap(Timestamp, OtherNals, RtpState#rtp_state{seq = (Seq+1) rem 16#10000}, [Rtp | Ret]);
+	wrap(Timestamp, OtherNals, RtpState#rtp_state{seq = inc_seq(Seq)}, [Rtp | Ret]);
 wrap(Timestamp, NRI, Type, <<Data:1434/binary, Rest/binary>>, OtherNals, RtpState, Ret) ->
 	S = 0,
 	E = 0,
@@ -88,4 +79,11 @@ wrap(Timestamp, NRI, Type, <<Data:1434/binary, Rest/binary>>, OtherNals, RtpStat
 	FU = <<0:1, NRI:2, ?NAL_FUA:5, S:1, E:1, 0:1, Type:5, Data/binary>>,
 	Rtp = <<?RTP_VERSION:2, ?RTP_NO_PADDING:1, ?RTP_NO_EXTANSION:1, ?RTP_NO_CSRC:4, Marker:1, ?DEFAULT_PAYLOAD_TYPE:7, 
 			Seq:16,Timestamp:32,SSRC:32,FU/binary>>,
-	wrap(Timestamp, NRI, Type, Rest, OtherNals, RtpState#rtp_state{seq = (Seq+1) rem 16#10000}, [Rtp | Ret]).
+	wrap(Timestamp, NRI, Type, Rest, OtherNals, RtpState#rtp_state{seq = inc_seq(Seq)}, [Rtp | Ret]).
+
+inc_seq(Seq) ->
+  (Seq+1) band 16#FFFF.
+
+make_ssrc() ->
+  random:seed(now()),
+  random:uniform(16#FFFFFFFF).

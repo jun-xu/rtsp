@@ -27,12 +27,12 @@ make_session() ->
   M = 100000000000000,
   integer_to_list(M+random:uniform(M)*5).
 
+to_fmtp(h264, Config) -> h264:to_fmtp(Config);
+%% to_fmtp(aac, Config) -> aac:to_fmtp(Config);
+to_fmtp(_, _) -> undefined.
+
 encode(#stream_info{content = Content, codec = Codec, stream_id = Id, options = Options, timescale = Timescale, params = Params} = Stream) ->
-%%   FMTP = case to_fmtp(Codec, Config) of
-%%     undefined -> "";
-%%     Else -> io_lib:format("a=fmtp:~p ~s\r\n", [payload_type(Codec), Else])
-%%   end,
-  FMTP = "",
+
   Cliprect = case Params of
     #video_params{width = Width, height = Height} when Width >= 0 andalso Height >= 0 ->
       io_lib:format("a=cliprect:0,0,~p,~p\r\na=framesize:~p ~p-~p\r\na=x-dimensions:~p,~p\r\n", [Width, Height, payload_type(Codec),Width, Height,Width,Height]);
@@ -43,6 +43,10 @@ encode(#stream_info{content = Content, codec = Codec, stream_id = Id, options = 
          _ -> Timescale
        end,
   Control = proplists:get_value(control, Options, io_lib:format("~s=~p", [?TRACK_TAG,Id])),
+  FMTP = case to_fmtp(Codec, Options) of
+    undefined -> "";
+    Else -> io_lib:format("a=fmtp:~p ~s\r\n", [payload_type(Codec), Else])
+  end,
   SDP = [
     io_lib:format("m=~s ~p RTP/AVP ~p", [Content, proplists:get_value(port, Options, 0), payload_type(Codec)]), ?LSEP,
     "a=control:", Control, ?LSEP,
@@ -51,7 +55,6 @@ encode(#stream_info{content = Content, codec = Codec, stream_id = Id, options = 
     FMTP
   ],
   iolist_to_binary(SDP);
-
 encode(#media_info{video = Video, audio = Audio, options = Options} = MediaInfo) ->
   iolist_to_binary([
     encode_sdp_session(proplists:get_value(sdp_session, Options)),

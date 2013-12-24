@@ -7,10 +7,12 @@
 -module(file_avi_reader).
 
 -behaviour(gen_server).
+-behaviour(rtsp_source_reader).
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
 -include("log.hrl").
+-include("h264.hrl").
 -include("media_info.hrl").
 -include("rtsp.hrl").
 -include("rtp_session.hrl").
@@ -23,8 +25,8 @@
 -compile(export_all).
 -endif.
 
--export([start_link/0,init_file/2,setup/3,stop/1,read/3,get_state/1,
-		 get_sdp/1]).
+-export([start_link/0,init_file/2,position/3,stop/1,read/3,get_state/1,
+		 get_sdp/1,pause/1]).
 
 %% --------------------------------------------------------------------
 %% gen_server callbacks
@@ -42,8 +44,10 @@ init_file(Pid,FilePath) ->
 get_sdp(Pid) ->
 	gen_server:call(Pid, get_sdp,infinity).
 
-setup(Pid,StartPos,Track) ->
-	gen_server:call(Pid, {setup,StartPos,Track},infinity).
+pause(_Pid) -> ok.		%% no use.
+
+position(Pid,StartPos,Track) ->
+	gen_server:call(Pid, {position,StartPos,Track},infinity).
 
 read(Pid,From,ReadId) ->
 	gen_server:cast(Pid, {read,From,ReadId}).
@@ -94,22 +98,31 @@ handle_call({init,FilePath},_,State) ->
 			{error,Reason}
 	end;
 
-handle_call(get_sdp,_,#state{fd=FD} = State) ->
+handle_call(get_sdp,_,#state{fd=FD,avi_info=undefined} = State) ->
 	{ok,#media_info{metadata=#stream_info{codec=Fcc,params=#video_params{fps=FPS}}}=MediaInfo,IVS,StartOffset,_RelDataSize} = decode_avi_file(FD),
 	IndexOffsetType = analyse_index_offset_type(IVS,StartOffset),
 	?DEBUG("~p -- avi info:~p~nfcchandler:~p,startoffset:~p,indexOffsetType:~p",[?MODULE,MediaInfo,Fcc,StartOffset,IndexOffsetType]),
-%% 	?TRACK("ivs:~p",[IVS]),
-	Flags = gen_all_frame_flag(MediaInfo),
-	
-%% 	?DEBUG("~p -- read flags:~p",[?MODULE,Flags]),
-	ReadHeader = #avi_read_header{read_flags=Flags,vids_fcc_handler=Fcc,fps=(1000 div FPS),vids_account=0},
-	{reply, {ok,MediaInfo}, State#state{avi_index_offset_type=IndexOffsetType,avi_read_header=ReadHeader,avi_info=MediaInfo,i_video_indexs=IVS,
+%% 	Flags = gen_all_frame_flag(MediaInfo),
+	ReadHeader = #avi_read_header{vids_fcc_handler=Fcc,fps=(1000 div FPS),vids_account=0},
+	{ok,NewMediaInfo} = case IVS of
+						[] ->
+							read_first_frame(FD,StartOffset+4,MediaInfo);
+						[#track_info{iindexs=[]}|_] ->
+							read_first_frame(FD,StartOffset+4,MediaInfo);
+						[#track_info{iindexs=[{_,Offset,_}|_]}|_] ->
+							NewOffset = count_new_offset(StartOffset,Offset,IndexOffsetType),
+							read_first_frame(FD,NewOffset,MediaInfo)
+					end,
+	{ok,_} = prim_file:position(FD, StartOffset),
+	{reply, {ok,NewMediaInfo}, State#state{avi_index_offset_type=IndexOffsetType,avi_read_header=ReadHeader,avi_info=NewMediaInfo,i_video_indexs=IVS,
 									cur_offset=StartOffset,data_start_offset=StartOffset}};	
+handle_call(get_sdp,_,#state{avi_info=MediaInfo} = State) ->
+	{reply, {ok,MediaInfo}, State};
 
-handle_call({setup,_,_},_,#state{i_video_indexs=[]} = State) ->
+handle_call({position,_,_},_,#state{i_video_indexs=[]} = State) ->
 	?INFO("~p -- no iindex to position.",[?MODULE]),
 	{reply, ok, State#state{first_read=true}};
-handle_call({setup,0,Track},_,#state{fd=FD,avi_read_header=ReadHeader,data_start_offset=StartOffset,i_video_indexs=IVS,
+handle_call({position,0,Track},_,#state{fd=FD,avi_read_header=ReadHeader,data_start_offset=StartOffset,i_video_indexs=IVS,
 									 avi_index_offset_type=IndexOffsetType} = State) ->
 	case search_track(Track, IVS) of
 		undefined -> 
@@ -127,7 +140,7 @@ handle_call({setup,0,Track},_,#state{fd=FD,avi_read_header=ReadHeader,data_start
 	end;
 %% 
 	
-handle_call({setup,StartPos,Track},_,#state{avi_read_header=ReadHeader=#avi_read_header{fps=FPS},data_start_offset=StartOffset,
+handle_call({position,StartPos,Track},_,#state{avi_read_header=ReadHeader=#avi_read_header{fps=FPS},data_start_offset=StartOffset,
 											 i_video_indexs=IVS,fd=FD,avi_index_offset_type=IndexOffsetType} = State) ->
 	case search_track(Track, IVS) of
 		undefined -> 
@@ -138,7 +151,6 @@ handle_call({setup,StartPos,Track},_,#state{avi_read_header=ReadHeader=#avi_read
 			{reply, ok, State#state{first_read=true}};
 		#track_info{iindexs=[{_,PreOffset,_}|T]} ->
 			{Account,Offset} = search_iindexs(StartPos,FPS,PreOffset,T),
-%% 			NewStartOffset = Offset+StartOffset-4,
 			NewOffset = count_new_offset(StartOffset,Offset,IndexOffsetType),
 			?INFO("~p -- setup from ~p to offset:~p.",[?MODULE,0,NewOffset]),
 			{ok,_} = prim_file:position(FD, NewOffset),
@@ -329,7 +341,7 @@ decode_index(FD,MediaInfo) ->
 			RelDataSize = DataSize-4,
 			{ok,_} = prim_file:position(FD, DataPosition + RelDataSize),
 			{ok,IVIndexs} = loop_decode_indexs(FD),
-			{ok,MediaInfo,IVIndexs,DataPosition,RelDataSize};
+			{ok,MediaInfo,IVIndexs,DataPosition-4,RelDataSize};
 		{ok,<<?AVI_LIST_JUNK,DataSize:32/little,_/binary>>} ->
 			{ok,CurPos} = prim_file:position(FD, {cur,0}),
 			{ok,_} = prim_file:position(FD, CurPos + DataSize - 4),
@@ -359,16 +371,16 @@ loop_decode_indexs0(<<_:2/binary,?AVI_INDEX_FRAME_TYPE_AUDIO,_:4/binary,_Offset:
 %% 	loop_decode_indexs0(R,IVS,VS,[{AAcount,Offset,Size}|AS],Account,AAcount+1);
 	loop_decode_indexs0(R,IVS,VS,AS,Account,AAcount+1);
 %% decode video index.
-loop_decode_indexs0(<<TrackBin:2/binary,VideoType:2/binary,_IFlag:4/binary,Offset:32/little,Size:32/little,R/binary>>,IVS,VS,AS,0,AAcount) ->
-	Track = list_to_integer(binary_to_list(TrackBin)),
-	case find_track(Track, IVS,[]) of
-		undefined ->
-			NewTrackInfo = #track_info{id=Track,type=VideoType,iindexs=[{0,Offset,Size}]},
-			loop_decode_indexs0(R,[NewTrackInfo|IVS],VS,AS,1,AAcount);
-		{#track_info{iindexs=SIVS} = TInfo,RestIVS} ->
-			NewTrackInfo = TInfo#track_info{iindexs=[{0,Offset,Size}|SIVS]},
-			loop_decode_indexs0(R,[NewTrackInfo|RestIVS],VS,AS,1,AAcount)
-	end;
+%% loop_decode_indexs0(<<TrackBin:2/binary,VideoType:2/binary,_IFlag:4/binary,Offset:32/little,Size:32/little,R/binary>>,IVS,VS,AS,0,AAcount) ->
+%% 	Track = list_to_integer(binary_to_list(TrackBin)),
+%% 	case find_track(Track, IVS,[]) of
+%% 		undefined ->
+%% 			NewTrackInfo = #track_info{id=Track,type=VideoType,iindexs=[{0,Offset,Size}]},
+%% 			loop_decode_indexs0(R,[NewTrackInfo|IVS],VS,AS,1,AAcount);
+%% 		{#track_info{iindexs=SIVS} = TInfo,RestIVS} ->
+%% 			NewTrackInfo = TInfo#track_info{iindexs=[{0,Offset,Size}|SIVS]},
+%% 			loop_decode_indexs0(R,[NewTrackInfo|RestIVS],VS,AS,1,AAcount)
+%% 	end;
 loop_decode_indexs0(<<TrackBin:2/binary,VideoType:2/binary,IFlag:32/little,Offset:32/little,Size:32/little,R/binary>>,IVS,VS,AS,Account,AAcount) ->
 	Track = list_to_integer(binary_to_list(TrackBin)),
 	case IFlag of
@@ -479,41 +491,64 @@ search_iindexs(StartPos,FPS,PreOffset,[{IIndex,_,_}|_]) when IIndex*FPS > StartP
 search_iindexs(StartPos,FPS,_PreOffset,[{_,Offset,_}|T]) ->
 	search_iindexs(StartPos,FPS,Offset,T).
 
-
-gen_all_frame_flag(#media_info{video=Videos,audio=Audios}) ->
-	gen_all_frame_flag0(Videos,Audios,[]).
-
-gen_all_frame_flag0([],[],L) -> lists:reverse(L);
-gen_all_frame_flag0([],[#stream_info{stream_id=Track}|T],L) ->
-	case gen_track_binary(Track) of
-		{ok,TrackBin} ->
-			AudioFlag = <<TrackBin/binary,?AVI_INDEX_FRAME_TYPE_AUDIO>>,
-			gen_all_frame_flag0([],T,[AudioFlag|L]);
-		_ ->
-			?INFO("~p -- ignore frame track:~p",[?MODULE,Track]),
-			gen_all_frame_flag0([],T,L)
-	end;
 	
-gen_all_frame_flag0([#stream_info{stream_id=Track}|T],Audios,L) ->
-	case gen_track_binary(Track) of
-		{ok,TrackBin} ->
-			VideoDBFLag = <<TrackBin/binary,?AVI_INDEX_FRAME_TYPE_VIDEO_DB>>,
-			VideoDCFLag = <<TrackBin/binary,?AVI_INDEX_FRAME_TYPE_VIDEO_DC>>,
-			gen_all_frame_flag0(T, Audios, [VideoDBFLag,VideoDCFLag|L]);
-		_ ->
-			?INFO("~p -- ignore frame track:~p",[?MODULE,Track]),
-			gen_all_frame_flag0(T, Audios,L)
-	end.
-	
-	
-gen_track_binary(Track) when Track < 10 ->
-	NTrack = $0 + Track,
-	{ok,<<"0",NTrack:8>>};
-gen_track_binary(Track) when Track < 99 ->
-	{ok,list_to_binary(integer_to_list(Track))};
-gen_track_binary(_) -> ignore.
-	
-
 count_new_offset(_StartOffset,Offset,?AVI_INDEX_OFFSET_TYPE_ABSOLUTE) -> Offset;
 count_new_offset(StartOffset,Offset,?AVI_INDEX_OFFSET_TYPE_RELATIVE) ->
-	StartOffset + Offset - 4.
+	StartOffset + Offset.
+
+read_first_frame(FD,StartOffset,#media_info{video=Videos} = MediaInfo) ->
+	{ok,_} = prim_file:position(FD, StartOffset),
+	case prim_file:read(FD, 8) of
+		{ok,<<TrackBin:2/binary,_Flag:2/binary,DataSize:32/little>>} ->
+			Track = list_to_integer(binary_to_list(TrackBin)),
+			case prim_file:read(FD, DataSize) of
+				{ok,FrameBin} ->
+					{ok,NewVideos} = analyse_config(Track,Videos,FrameBin,[]),
+%% 					?TRACK("new videos:~p",[NewVideos]),
+					{ok,MediaInfo#media_info{video=NewVideos}};
+				_ ->
+					{ok,MediaInfo}
+			end;
+		E ->
+			?INFO("~p -- read first frame error:~p",[?MODULE,E]),
+			{ok,MediaInfo}
+	end.
+
+analyse_config(_Track,[],_FrameBin,L) -> {ok,lists:reverse(L)};
+analyse_config(Track,[#stream_info{stream_id=Track,codec=Codec,options=Opts}=Info|T],FrameBin,L) ->
+	Options = unpacket_sps_pps_frame(Codec,FrameBin),
+	analyse_config(Track,T,FrameBin,[Info#stream_info{options=lists:append(Opts, Options)}|L]);
+	
+analyse_config(Track,[Info|T],FrameBin,L) ->
+	analyse_config(Track,T,FrameBin,[Info|L]).
+
+unpacket_sps_pps_frame(h264,FrameBin) -> unpacket_sps_pps0(FrameBin,[]);
+unpacket_sps_pps_frame(_,_) -> [].
+
+unpacket_sps_pps0(<<0,0,0,1,R/binary>>,Options) ->
+	unpacket_next_sps_pps(R,Options);
+unpacket_sps_pps0(<<0,0,1,R/binary>>,Options) ->
+	unpacket_next_sps_pps(R,Options).
+%% pps
+unpacket_next_sps_pps(<<0:1, _NalRefIdc:2, ?NAL_PPS:5, R/binary>> = Frame,Options) ->
+	PPSSize = loop_read_rest_size(R,0) +1,
+  	<<PPS:PPSSize/binary,Rest/binary>> = Frame,
+  	unpacket_sps_pps0(Rest, [{pps,PPS}|Options]);
+%% sps
+unpacket_next_sps_pps(<<0:1, _NalRefIdc:2, ?NAL_SPS:5, R/binary>> = Frame,Options) ->
+	SPSSize = loop_read_rest_size(R,0) + 1,
+  	<<SPSBin:SPSSize/binary,Rest/binary>> = Frame,
+  	unpacket_sps_pps0(Rest, [{sps,SPSBin}|Options]);
+unpacket_next_sps_pps(_,Options) ->
+	Options.
+
+loop_read_rest_size(<<0,0,0,1,_/binary>>,Size) -> Size;
+loop_read_rest_size(<<0,0,1,_/binary>>,Size) -> Size;
+loop_read_rest_size(<<_,0,0,R/binary>>,Size) ->
+	loop_read_rest_size(<<0,0,R/binary>>,Size+1);
+loop_read_rest_size(<<_,_,0,R/binary>>,Size) ->	
+	loop_read_rest_size(<<0,R/binary>>,Size+2);
+ loop_read_rest_size(<<_,_,_,R/binary>>,Size) ->
+	loop_read_rest_size(R,Size+3).
+	 
+	 
