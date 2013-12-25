@@ -149,8 +149,8 @@ handle_call({position,StartPos,Track},_,#state{avi_read_header=ReadHeader=#avi_r
 		#track_info{iindexs=[]} ->
 			?INFO("~p -- no track:~p iindex to position.",[?MODULE,Track]),
 			{reply, ok, State#state{first_read=true}};
-		#track_info{iindexs=[{_,PreOffset,_}|T]} ->
-			{Account,Offset} = search_iindexs(StartPos,FPS,PreOffset,T),
+		#track_info{iindexs=[{PreAccount,PreOffset,_}|T]} ->
+			{Account,Offset} = search_iindexs(StartPos,FPS,{PreAccount,PreOffset},T),
 			NewOffset = count_new_offset(StartOffset,Offset,IndexOffsetType),
 			?INFO("~p -- setup from ~p to offset:~p.",[?MODULE,0,NewOffset]),
 			{ok,_} = prim_file:position(FD, NewOffset),
@@ -485,11 +485,11 @@ reverse_all0([#track_info{iindexs=SIVS}=Info|T],IVS) ->
 	reverse_all0(T,[Info#track_info{iindexs=lists:reverse(SIVS)}|IVS]).
 
 
-search_iindexs(_StartPos,_FPS,PreOffset,[]) -> PreOffset;
-search_iindexs(StartPos,FPS,PreOffset,[{IIndex,_,_}|_]) when IIndex*FPS > StartPos->
-	{IIndex-1,PreOffset};
-search_iindexs(StartPos,FPS,_PreOffset,[{_,Offset,_}|T]) ->
-	search_iindexs(StartPos,FPS,Offset,T).
+search_iindexs(_StartPos,_FPS,{PreAccount,PreOffset},[]) -> {PreAccount,PreOffset};
+search_iindexs(StartPos,FPS,{PreAccount,PreOffset},[{IIndex,_,_}|_]) when IIndex*FPS > StartPos->
+	{PreAccount,PreOffset};
+search_iindexs(StartPos,FPS,{PreAccount,PreOffset},[{IIndex,Offset,_}|T]) ->
+	search_iindexs(StartPos,FPS,{IIndex,Offset},T).
 
 	
 count_new_offset(_StartOffset,Offset,?AVI_INDEX_OFFSET_TYPE_ABSOLUTE) -> Offset;
