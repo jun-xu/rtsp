@@ -220,7 +220,7 @@ handle_setup(Headers, URL, Socket, State=#state{rtp_pid=RtpPid,session=Session})
 			{ok, {Address, _}} = inet:sockname(Socket),
 			Source = inet_parse:ntoa(Address),
 			case rtp_server:setup(RtpPid,#setup{client_port={Client_port_rtsp, Client_port_rtp},transport=udp,client_pid=self(),
-										  destination=Destination,url=URL,seq=?DEFAULT_RTSP_SEQ_START,ssrc=?DEFAUTL_RTSP_SSRC}) of
+										  destination=Destination,url=URL,seq=?DEFAULT_RTSP_SEQ_START}) of
 				{ok,{Rtp_Port,Rtcp_Port}} ->
 %% 					?INFO("~p -- return:~p",[?MODULE,{Rtp_Port,Rtcp_Port}]),
 					Respon = rtsp_response_wrap:handle_reply(setup, {Headers,Source,TotalProtoString,

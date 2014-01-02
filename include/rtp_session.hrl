@@ -11,7 +11,8 @@
 				track = 1 :: integer(),
 				type = h264 :: atom(),
 				timescale = 90000,		%% h264: 90000HZ
-				data :: binary()
+				data :: binary(),
+				duration
 			   }).
 
 -define(DEFAULT_FRAME_TYPE_MAPPING,default).

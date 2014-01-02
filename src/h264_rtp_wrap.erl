@@ -21,11 +21,11 @@
 %% API Functions
 %%
 -spec wrap(Frame::#frame{}, RtpState::#rtp_state{}) -> {ok, Rtps::list(), NewRtpState::#rtp_state{}}.
-wrap(#frame{timestamp=Timestamp, data=Data}, RtpState) ->
-%% 	?DEBUG("~p --  send frame:~p",[?MODULE,{Track,Type,Timestamp}]),
-	[<<>> | Nals] = binary:split(Data, <<1:32>>, [global]),
-	RtpTimestamp = Timestamp * 90000 div 1000,
-	wrap(RtpTimestamp, Nals, RtpState#rtp_state{ssrc=make_ssrc(),dtc=rtsp_util:dtc()}, []).
+wrap(#frame{timestamp=Timestamp,data=Data,duration=Duration}, RtpState) ->
+%% 	?TRACK("~p --  send frame:~p",[?MODULE,{Track,Type,Timestamp,Duration}]),
+%% 	[<<>> | Nals] = binary:split(Data, <<1:32>>, [global]),
+%% 	RtpTimestamp = Timestamp * 90000 div 1000,
+	wrap(Duration, [Data], RtpState#rtp_state{dtc=rtsp_util:dtc()}, []).
 
 %%
 %% Local Functions
@@ -83,7 +83,3 @@ wrap(Timestamp, NRI, Type, <<Data:1434/binary, Rest/binary>>, OtherNals, RtpStat
 
 inc_seq(Seq) ->
   (Seq+1) band 16#FFFF.
-
-make_ssrc() ->
-  random:seed(now()),
-  random:uniform(16#FFFFFFFF).

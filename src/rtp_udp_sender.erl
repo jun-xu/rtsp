@@ -76,13 +76,13 @@ init([]) ->
 handle_call({setup,Setup}, _From, #rtp_udp_sender{setup=true,server_rtp_port=MyRtpPort,server_rtcp_port=MyRtcpPort} = State) ->
 	?INFO("~p -- already setup:~p",[?MODULE,Setup]),
 	{reply, {ok,{MyRtpPort,MyRtcpPort}}, State};
-handle_call({setup,#setup{seq=Seq, ssrc=SSRC, client_port={RtpPort,RtcpPort},destination=Destination} = Setup}, _From, State) ->
+handle_call({setup,#setup{seq=Seq, client_port={RtpPort,RtcpPort},destination=Destination} = Setup}, _From, State) ->
 	?INFO("~p -- setup:~p~n",[?MODULE,Setup]),
 	{ok, {{MyRtpPort , MyRtcpPort}=ServerPorts, {RtpSocket, RtcpSocket}}} = rtsp_util:open_groupsocket(self()),
 	{ok, RtcpPid} = rtcp_socket:rtcp_start(MyRtcpPort,Destination,RtcpPort,RtcpSocket),
 	ok = gen_udp:controlling_process(RtcpSocket, RtcpPid),
 	{ok,SendDes} = inet:getaddr(Destination,inet),
-	RtpState = #rtp_state{seq=Seq,ssrc=SSRC},
+	RtpState = #rtp_state{seq=Seq,ssrc=make_ssrc()},
 	{reply, {ok,ServerPorts}, State#rtp_udp_sender{rtcp_socket=RtcpSocket,server_rtcp_port=MyRtcpPort,server_rtp_port=MyRtpPort,
 															  destination=SendDes,rtcp_pid=RtcpPid,client_rtp_port=RtpPort,
 											   				  rtp_socket=RtpSocket,rtp_state=RtpState,setup=true}};
@@ -196,3 +196,8 @@ loop_send_rtp(RtpSocket,Destination,RtpPort,Rtp) ->
 			?DEBUG("~p -- send frame to ~p:~p error:~p~n",[?MODULE,Destination,RtpPort,E]),
 			E  
  end.
+
+
+make_ssrc() ->
+  random:seed(now()),
+  random:uniform(16#FFFFFFFF).

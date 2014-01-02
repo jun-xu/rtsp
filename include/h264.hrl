@@ -29,6 +29,7 @@
 -record(h264, {
   profile,
   profile_compat = 0,
+  flag,
   level,
   length_size = 32,
   sps,

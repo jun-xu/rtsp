@@ -441,13 +441,13 @@ loop_analyse_frames(From,ReadId,ReadLength,Frames,<<TrackBin:2/binary,Flag:2/bin
 					%% analyse frames
 					Track = list_to_integer(binary_to_list(TrackBin)),
 					Timestamp = Account * FPS,
-					Frame = #frame{data=DataBin,type=FccHandler,track=Track,timestamp=Timestamp},
+					Frame = #frame{data=DataBin,type=FccHandler,track=Track,timestamp=Timestamp,duration=Timestamp*90,timescale = 90000},
 %% 					?TRACK("div 2 0,frame:~p size:~p",[{Account,Timestamp},DataSize]),
 					loop_analyse_frames(From, ReadId, ReadLength - 1, [Frame|Frames], RemainBin,ReadInfo#avi_read_header{vids_account=Account+1});
 				<<DataSize:32/little,DataBin:DataSize/binary,_IgnoreBin:1/binary,RemainBin/binary>> ->
 					Track = list_to_integer(binary_to_list(TrackBin)),
 					Timestamp = Account * FPS,
-					Frame = #frame{data=DataBin,type=FccHandler,track=Track,timestamp=Timestamp},
+					Frame = #frame{data=DataBin,type=FccHandler,track=Track,timestamp=Timestamp,duration=Timestamp*90,timescale = 90000},
 %% 					?TRACK("frame:~p size:~p",[{Account,Timestamp},DataSize]),
 					loop_analyse_frames(From, ReadId, ReadLength - 1, [Frame|Frames], RemainBin,ReadInfo#avi_read_header{vids_account=Account+1});
 				_ ->

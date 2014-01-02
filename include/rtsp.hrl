@@ -28,7 +28,6 @@
 
 
 -define(DEFAULT_RTSP_SEQ_START,1234).
--define(DEFAUTL_RTSP_SSRC,123456789).
 
 
 -define(DEFAULT_SAMPLING_FREQUENCY,90000).
@@ -73,8 +72,9 @@
 -define(RTSP_SERVER_ROUTE_MOD_MAPPING,[{files,?DEFAULT_RTSP_SERVER_MOD},{"files",?DEFAULT_RTSP_SERVER_MOD},
 									   {streams,?RTSP_SERVER_STREAMS_MOD},{"streams",?RTSP_SERVER_STREAMS_MOD}]).
 
--define(DEFAULT_READ_MOD,file_avi_reader).
--define(RTSP_FILE_MOD_MAPPING,[{".avi",?DEFAULT_READ_MOD}]).
+-define(AVI_READER_MOD,file_avi_reader).
+-define(MP4_READER_MOD,file_mpg4_reader).
+-define(RTSP_FILE_MOD_MAPPING,[{".avi",?AVI_READER_MOD},{".mp4",?MP4_READER_MOD}]).
 
 
 

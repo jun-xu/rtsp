@@ -95,7 +95,7 @@ encode_attrs(Attrs) ->
   end, Attrs).
 
 
-encode_media_info(#media_info{duration = Duration,options=Options}) when Duration =/= undefined ->
+encode_media_info(#media_info{duration = Duration,options=Options}) ->
 	Url = proplists:get_value(url, Options,"*"),
   [
     "a=control:",Url, ?LSEP,
