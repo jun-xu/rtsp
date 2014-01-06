@@ -238,7 +238,7 @@ avc1_avcc(<<>>) -> undefined;
 avc1_avcc(R) ->
 	case read_box_header(R) of
 		{'avcC',Body,_Rest} ->
-			?TRACK("avcc body:~p",[Body]),
+%% 			?TRACK("avcc body:~p",[Body]),
 			{ok,H264} = h264:decode_config(Body),
 			H264;
 		{Type,Body,Rest} ->

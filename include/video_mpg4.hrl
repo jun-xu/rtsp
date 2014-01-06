@@ -198,12 +198,15 @@
 					 cur_duration = 0,
 					 samples = [],
 					 type = h264,
-					 track = 1
+					 track = 1,
+					 specific,
+					 fd
 					 }).
 
 -record(mpg4_index,{timescale = 90000,
 					samples :: [{Index::integer(),Size::integer(),Duration::integer()}|{trunk,Offset::integer()}],
-					stss
+					stss,
+					specific
 					 }).
 
 -record(mpg4_state,{file_path,

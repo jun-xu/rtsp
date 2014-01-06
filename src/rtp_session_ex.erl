@@ -7,6 +7,7 @@
 -module(rtp_session_ex).
 
 -behaviour(gen_server).
+-behaviour(rtp_session).
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
@@ -19,7 +20,7 @@
 %% --------------------------------------------------------------------
 %% External exports
 %% --------------------------------------------------------------------
--export([start_link/0,setup/2,play/2,pause/2,get_sdp/2]).
+-export([start_link/0,setup/2,play/2,pause/2,get_sdp/2,stop/1]).
 
 %% --------------------------------------------------------------------
 %% gen_server callbacks
@@ -54,6 +55,9 @@ pause(Pid,Pause) ->
 -spec get_sdp(Pid::pid(),URL::string()|binary()) -> {ok, SDP::string()} | error.
 get_sdp(Pid,URL) ->
 	gen_server:call(Pid, {get_sdp,URL},infinity).
+
+stop(Pid) ->
+	gen_server:call(Pid, stop,infinity).
 
 %% ====================================================================
 %% Server functions
@@ -192,7 +196,7 @@ handle_call(#pause{} = Pause,_,#rtp_session_state_ex{send_timer=Timer} = State) 
 	%% clean all waited plays when pause. 
 	{reply, ok, State#rtp_session_state_ex{pre_frame=undefined,send_timer=undefined,plays=[],rtp_state=?RTP_SESSION_STATE_PAUSING}};
 
-handle_call(close, _From, State) ->
+handle_call(stop, _From, State) ->
 	{stop, normal, ok, State};
 
 handle_call(teardown, _From,State) ->

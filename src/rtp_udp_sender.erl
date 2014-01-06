@@ -101,9 +101,9 @@ handle_call(Request, _From, State) ->
 %% 		Handling cast messages
 %% @end
 %%--------------------------------------------------------------------
-handle_cast({send,#frame{type=FrameType,timestamp=_CurrentPos} = Frame},#rtp_udp_sender{setup=true,destination=SendDes,client_rtp_port=RtpPort,
+handle_cast({send,#frame{type=FrameType,timestamp=_CurrentPos,duration=Dur} = Frame},#rtp_udp_sender{setup=true,destination=SendDes,client_rtp_port=RtpPort,
 															  rtp_socket=RtpSocket,rtp_state=RtpState} = State) ->
-%% 	?DEBUG("~p -- send frame:~p~n",[?MODULE,_CurrentPos]),
+%% 	?TRACK("~p -- send frame:~p dur:~p~n",[?MODULE,_CurrentPos,Dur]),
 	{ok, Rtps, NewRtpState} = 
 		case FrameType of
 			h264 ->
@@ -125,6 +125,7 @@ handle_cast({send,#frame{type=FrameType,timestamp=_CurrentPos} = Frame},#rtp_udp
 %% 	{noreply, State};
 
 handle_cast(send_bye,#rtp_udp_sender{setup=true,rtcp_pid=RtcpPid} = State) ->
+%% 	?TRACK("~p -- totalSize:~p",[?MODULE,TotalSize]),
 	case RtcpPid of
 		undefined -> ok;
 		_ -> rtcp_socket:rtcp_stop(RtcpPid)

@@ -2,57 +2,49 @@
 %%% Author  : sunshine
 %%% Description :
 %%%
-%%% Created : 2013-12-20
+%%% Created : 2014-1-2
 %%% -------------------------------------------------------------------
--module(rtp_stream_session).
+-module(mp4_to_h264).
 
 -behaviour(gen_server).
 %% --------------------------------------------------------------------
 %% Include files
 %% --------------------------------------------------------------------
--include("rtp_session.hrl").
--include("sdp.hrl").
--include("media_info.hrl").
--include("video_stream.hrl").
--include("rtsp.hrl").
 -include("log.hrl").
+-include("h264.hrl").
+-include("aac.hrl").
+-include("media_info.hrl").
+-include("rtsp.hrl").
+-include("rtp_session.hrl").
+-include("video_file.hrl").
+-include("video_mpg4.hrl").
+-include_lib("kernel/include/file.hrl").
+
+-define(FILE_WRITE_OPEN_OPTIONS,[write,read,raw,binary]).
 %% --------------------------------------------------------------------
 %% External exports
 %% --------------------------------------------------------------------
--export([start_link/0,setup/2,play/2,pause/2,get_sdp/2,register_read/3,stop/1]).
+-export([start_link/0,stop/1,to_h264/2]).
 
 %% --------------------------------------------------------------------
 %% gen_server callbacks
 %% --------------------------------------------------------------------
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
+-record(state, {}).
+
 %% ====================================================================
 %% External functions
 %% ====================================================================
-
 start_link() ->
 	gen_server:start_link(?MODULE, [], []).
 
--spec register_read(Pid::pid(),Mod::atom(),Reader::pid()) -> ok | {error,Reason::any()}.
-register_read(Pid,Mod,Reader) ->
-	gen_server:call(Pid, {register_read,Mod,Reader},infinity).
-
--spec setup(Pid::pid(), Setup::#setup{}) -> {ok,ServerPort::{0..65536,0..65536}} | {error,Reason::atom()}.
-setup(Pid,Setup) ->
-	gen_server:call(Pid, Setup,infinity).
-
-play(Pid,Play) ->
-	gen_server:call(Pid, Play,infinity).
-
-pause(Pid,Pause) ->
-	gen_server:call(Pid, Pause,infinity).
-
--spec get_sdp(Pid::pid(),URL::string()|binary()) -> {ok, SDP::string()} | error.
-get_sdp(Pid,URL) ->
-	gen_server:call(Pid, {get_sdp,URL},infinity).
+to_h264(Pid,FilePath) ->
+	gen_server:call(Pid, {init_file,FilePath},infinity).
 
 stop(Pid) ->
 	gen_server:call(Pid, stop,infinity).
+	
 
 %% ====================================================================
 %% Server functions
@@ -69,7 +61,7 @@ stop(Pid) ->
 %% @end
 %%----------------------------------------------------------------------
 init([]) ->
-    {ok, #rtp_session_streams{}}.
+    {ok, #state{}}.
 
 %%--------------------------------------------------------------------
 %% @private
@@ -84,63 +76,25 @@ init([]) ->
 %% 		Handling call messages
 %% @end
 %%--------------------------------------------------------------------
-handle_call({register_read,Mod,ReaderPid},_,#rtp_session_streams{source_pid=undefined} = State) ->
-	Ref = erlang:monitor(process, ReaderPid),
-	{reply, ok, State#rtp_session_streams{source_ref=Ref,source_pid={Mod,ReaderPid}}};
-handle_call({register_read,_,ReaderPid},_,#rtp_session_streams{source_pid={_,ReaderPid}} = State) ->
-	{reply, ok, State};
-handle_call({register_read,_,_},_,State) ->
-	{reply, {error,already_register}, State};
-
-handle_call({get_sdp,_},_,#rtp_session_streams{source_pid=undefined} = State) ->
-	?INFO("~p -- no media source to read sdp.",[?MODULE]),
-	{reply, {error,cannot_find}, State};
-handle_call({get_sdp,URL},_,#rtp_session_streams{sdp=undefined,source_pid={Mod,ReaderPid}} = State) ->
-	case decode_stream_path(URL) of
-		{ok,StreamId} ->
-			case Mod:get_sdp(ReaderPid) of
-				{ok,#media_info{options=Options} =MediaInfo} ->
-					{ok,SessionId,NewMediaInfo} = rtsp_util:gen_sdp_session(MediaInfo#media_info{options=[{url,URL}|Options]}),
-					Sdp = sdp:encode(NewMediaInfo),
-					?INFO("~p -- init sdp:~p~nsession:~p",[?MODULE,Sdp,SessionId]),
-					{reply, {ok,Sdp,SessionId}, State#rtp_session_streams{sdp=Sdp,session_id=SessionId,media_info=NewMediaInfo,source_pid=ReaderPid}};
-				E ->
-					?INFO("~p -- get sdp of stream:~p error:~p",[?MODULE,StreamId,E]),
-					{stop, close, {error, cannot_find}, State}
+handle_call({init_file,FilePath},_,State) ->
+	RootName = filename:rootname(FilePath),
+	case prim_file:open(FilePath, ?FILE_READ_OPEN_OPTIONS) of
+		{ok,FD} ->
+			prim_file:delete(RootName++".h264"),
+			case prim_file:open(RootName++".h264",?FILE_WRITE_OPEN_OPTIONS) of
+				{ok,WFD} ->
+					ok = mp4_to_h264(FilePath,FD,WFD),
+					prim_file:close(WFD),
+					prim_file:close(FD),
+					{reply, ok, State};
+				{error,R} ->
+					{reply, {error,R}, State}
 			end;
-		{error,Reason} ->
-			?INFO("~p -- bad request:~p by reason:~p",[?MODULE,URL,Reason]),
-			{stop, close, {error, bad_request}, State}
+		{error,R} ->
+			{reply, {error,R}, State}
 	end;
-handle_call({get_sdp,_URL},_,#rtp_session_streams{sdp=Sdp,session_id=SessionId} = State) ->
-	{reply, {ok,Sdp,SessionId}, State};		
-
-handle_call(#setup{url=Url} = Setup, _From, #rtp_session_streams{channels=Channels} = State) ->
-	?INFO("~p -- udp setup:~p~n",[?MODULE,Setup]),
-	case parse_track(Url) of
-		{error,not_found} -> 
-			{reply, {error, bad_request}, State};
-		{ok,Track} ->
-			case proplists:get_value(Track, Channels) of
-				{SenderPid} ->
-					case rtp_stream_udp_sender:setup(SenderPid,Setup) of
-						{ok,ServerPorts} -> {reply,{ok,ServerPorts},State};
-						{error,Reason} ->
-							?INFO("~p -- setup channel of track:~p error by reason:~p",[?MODULE,Track,Reason]),
-							{reply, {error, bad_request}, State}
-					end;
-				undefined ->
-					{ok,SenderPid} = rtp_stream_udp_sender:start_link(),
-					case rtp_stream_udp_sender:setup(SenderPid,Setup) of
-						{ok,ServerPorts} -> 
-							{reply,{ok,ServerPorts},State#rtp_session_state_ex{channels=[{Track,SenderPid}|Channels]}};
-						{error,Reason} ->
-							?INFO("~p -- setup channel of track:~p error by reason:~p",[?MODULE,Track,Reason]),
-							{reply, {error, bad_request}, State}
-					end
-			end
-	end;
-																							 
+handle_call(stop, From, State) ->
+	{stop, normal, ok, State};
 handle_call(Request, From, State) ->
     Reply = ok,
     {reply, Reply, State}.
@@ -166,10 +120,6 @@ handle_cast(Msg, State) ->
 %% 		Handling all non call/cast messages
 %% @end
 %%--------------------------------------------------------------------
-handle_info({'DOWN',Ref,process,_Pid,_Info},#rtp_session_streams{source_ref=Ref,source_pid=SourcePid} = State) ->
-	?INFO("~p -- source:~p down,stop.~n",[?MODULE,SourcePid]),
-%% 	catch release_all_clients(Clients,source_down),
-	{stop, normal, State#rtp_session_streams{source_pid=undefined,source_ref=undefined}};
 handle_info(Info, State) ->
     {noreply, State}.
 
@@ -198,16 +148,35 @@ code_change(OldVsn, State, Extra) ->
 %% --------------------------------------------------------------------
 %%% Internal functions
 %% --------------------------------------------------------------------
-decode_stream_path(Url) ->
-	case re:run(Url, ".*"++ ?STEAMS_PRE_FIX ++"/(.*)", [{capture, all_but_first, list}]) of
-		nomatch -> {error,nomatch};
-		{match,[StreamId]} ->
-			{ok,StreamId}
-	end.
+write_h264_frame(FD,#h264{sps=SPS,pps=PPS}) ->
+	prim_file:write(FD, <<0,0,0,1,SPS/binary>>),
+	prim_file:write(FD, <<0,0,0,1,PPS/binary>>);
+write_h264_frame(_FD,[]) -> ok;
+write_h264_frame(_FD,[eof]) -> eof;
+write_h264_frame(FD,[#frame{data=Data}|T]) ->
+	prim_file:write(FD, <<0,0,0,1,Data/binary>>),
+	write_h264_frame(FD, T).
+	
+mp4_to_h264(FilePath,FD,WFD) ->
+	{ok,Mp4Info} = mp4_util:decode_mpg4_file(FilePath, FD),
+	{ok,_,[{_,TrackIndex=#mpg4_index{specific=H264}}]} = mp4_util:analyze_media_info(Mp4Info),
+	{ok,#mpg4_reader{cur_offset=Offset} = Reader} = mp4_util:position(TrackIndex,0),
+	{ok,_} = prim_file:position(FD, Offset),
+	ok = write_h264_frame(WFD,H264),
+	ok = loop_write_h264(?DEFAULT_MIN_READ_FRAMES_Length,WFD,Reader#mpg4_reader{fd=FD}),
+	ok.
 
-parse_track(Url) ->
-	case re:run(Url, ".*"++ ?STEAMS_PRE_FIX ++".*/"++?TRACK_TAG++"=(.*)", [{capture, all_but_first, list}]) of
-		nomatch -> {error,not_found};
-		{match,[Track]} ->
-			{ok,list_to_integer(Track)}
+loop_write_h264(ReaderLength,WFD,Reader) ->
+	case mp4_util:read_frames(ReaderLength,Reader,[]) of
+		{ok,NewReader,Frames} ->
+			?TRACK("~p -- read frames:~p",[?MODULE,length(Frames)]),
+			ok = write_h264_frame(WFD,lists:reverse(Frames)),
+			loop_write_h264(ReaderLength,WFD,NewReader);
+		{eof,Frames} ->
+			?TRACK("~p -- read frames:~p eof.",[?MODULE,length(Frames)]),
+			eof = write_h264_frame(WFD,lists:reverse(Frames)),
+			ok;
+		{error,R} ->{error,R}
 	end.
+	
+	

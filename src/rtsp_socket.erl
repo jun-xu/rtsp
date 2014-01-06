@@ -244,67 +244,58 @@ handle_setup(Headers, URL, Socket, State=#state{rtp_pid=RtpPid,session=Session})
 %%----------------------------------------------------------------------
 %% @spec play scale 0.125-8 ########
 %%----------------------------------------------------------------------
-handle_play(Headers, Socket,#state{session=SeflSession} = State) ->
-	{'Session', Session} = lists:keyfind('Session', 1, Headers),
-	Respon = 
-		case list_to_binary(SeflSession) of
-			Session ->
-				Range =
-					case proplists:get_value('Range', Headers) of
-						undefined ->
-							undefined;
-						Range0 ->
-							{ok, BTime, ETime} = rtsp_unpacket:decode_range_value(Range0),
-							{BTime, ETime}
-					end,
-				Scale =
-					case proplists:get_value('Scale', Headers) of
-						undefined ->
-							?DEFAULT_SCAL;
-						Scale0 ->
-							?BINARY_TO_FLOAT(Scale0)
-					end,
-				rtp_server:play(State#state.rtp_pid, #play{range=Range,scale=Scale}),
-				rtsp_response_wrap:handle_reply(play, Headers);
-			_ ->
-				rtsp_response_wrap:handle_reply(session_not_find, Headers)
-		end,
+handle_play(Headers, Socket,#state{session=SelfSession} = State) ->
+	Range = case proplists:get_value('Range', Headers) of
+				undefined ->
+					undefined;
+				Range0 ->
+					{ok, BTime, ETime} = rtsp_unpacket:decode_range_value(Range0),
+					{BTime, ETime}
+			end,
+	Scale = case proplists:get_value('Scale', Headers) of
+				undefined ->
+					?DEFAULT_SCAL;
+				Scale0 ->
+					?BINARY_TO_FLOAT(Scale0)
+			end,
+	rtp_server:play(State#state.rtp_pid, #play{range=Range,scale=Scale}),
+	Respon = case proplists:get_value('Session', Headers) of
+				undefined ->
+					rtsp_response_wrap:handle_reply(play, [{'Session',list_to_binary(SelfSession)}|Headers]);
+				_ ->
+					rtsp_response_wrap:handle_reply(play, Headers)
+			end,
 	ok = gen_tcp:send(Socket, Respon),
 	{ok, State}.
 	
 
 handle_pause(Headers, Socket,#state{session=SelfSession} = State) ->
-	{'Session', Session} = lists:keyfind('Session',1,Headers),
-	Respon = case Session =:= (list_to_binary(SelfSession)) of
-		true ->
-			Range1 = case lists:keyfind('Range', 1, Headers) of
-						false ->
-					 		undefined;
-				 		{'Range', Range} ->
-					 		{ok, BTime,_} = rtsp_unpacket:decode_range_value(Range),
-					 		BTime
-				end,
-			rtp_server:pause(State#state.rtp_pid, #pause{range=Range1}),
-			rtsp_response_wrap:handle_reply(normal_reply, Headers);
-		false ->
-			rtsp_response_wrap:handle_reply(session_not_find, Headers)
-	end,
+	Range1 = case lists:keyfind('Range', 1, Headers) of
+				false ->
+			 		undefined;
+		 		{'Range', Range} ->
+			 		{ok, BTime,_} = rtsp_unpacket:decode_range_value(Range),
+			 		BTime
+			end,
+	rtp_server:pause(State#state.rtp_pid, #pause{range=Range1}),
+	Respon = case proplists:get_value('Session', Headers) of
+				undefined ->
+					rtsp_response_wrap:handle_reply(normal_reply,[{'Session',list_to_binary(SelfSession)}|Headers]);
+				_ ->
+					rtsp_response_wrap:handle_reply(normal_reply, Headers)
+			end,
 	ok = gen_tcp:send(Socket, Respon),
 	{ok, State}.
 
 handle_teardown(Headers, Socket, #state{session=SelfSession} = State) ->
-	{'Session', Session} = lists:keyfind('Session',1,Headers),
-	Respon = case Session =:= (list_to_binary(SelfSession)) of
-				 true ->
-%% 					rtp_server:close(State#state.rtp_pid),
-					rtp_server:teardown(State#state.rtp_pid),
-					NewState = State#state{rtp_pid=undefined},
-					
-					rtsp_response_wrap:handle_reply(normal_reply, Headers);
-				 false ->
-					 NewState = State,
-					 rtsp_response_wrap:handle_reply(session_not_find, Headers)
-			 end,
+	rtp_server:teardown(State#state.rtp_pid),
+	NewState = State#state{rtp_pid=undefined},
+	Respon = case proplists:get_value('Session', Headers) of
+				undefined ->
+					rtsp_response_wrap:handle_reply(normal_reply,[{'Session',list_to_binary(SelfSession)}|Headers]);
+				_ ->
+					rtsp_response_wrap:handle_reply(normal_reply, Headers)
+			end,
 	gen_tcp:send(Socket, Respon),
 	{ok, NewState}.
 %%----------------------------------------------------------------------

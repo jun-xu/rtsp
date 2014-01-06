@@ -35,8 +35,11 @@
 								    {7,22050},{8,16000},{9,12000},{10,11025},{11,8000},{12,7350}]).
 -record(rtp_state, {seq=0 :: integer(),
 					ssrc=0 :: integer(),
-					dtc,
-					samplingfrequency = ?DEFAULT_SAMPLING_FREQUENCY :: integer()}).
+					dtc
+%% 					samplingfrequency = ?DEFAULT_SAMPLING_FREQUENCY :: integer()
+				   }).
+
+
 -record(rtp_udp_sender,{client_rtp_port :: integer(),
 					server_rtp_port :: integer(),
 					server_rtcp_port :: integer(),
